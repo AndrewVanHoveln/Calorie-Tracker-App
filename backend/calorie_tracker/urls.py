@@ -5,9 +5,9 @@ urlpatterns = [
     path("", views.home, name='home'),
     path("login", views.login, name='login'),
     path("logout", views.logout, name='logout'),
-    path("add-entry", views.addEntry, name='add-entry'),
-    path("delete-entry", views.deleteEntry, name='delete-entry'),
-    path("modify-entry", views.modifyEntry, name='modify-entry'),
+    path("add", views.addEntry, name='add-entry'),
+    path("<int:id>/delete", views.deleteEntry, name='delete-entry'),
+    path("<int:id>/modify", views.modifyEntry, name='modify-entry'),
     path("register", views.register, name='register'),
-    path('get-entries', views.getEntries, name='get-entries')
+    path('get', views.getEntries, name='get-entries')
 ]

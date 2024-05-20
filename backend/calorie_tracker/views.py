@@ -1,9 +1,8 @@
-from django.shortcuts import render
-from django.http import HttpResponse, JsonResponse
 from . import utils
 import json
 from .models import User, Entry
 import datetime
+from django.forms.models import model_to_dict
 
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -34,7 +33,7 @@ def login(request):
         return Response(session_id)
         
     except json.JSONDecodeError:
-        return HttpResponse("Invalid Data", status=400)
+        return Response("Invalid Data", status=400)
 
 @api_view(['POST'])
 def register(request):
@@ -44,23 +43,22 @@ def register(request):
         password = utils.hash_password(data.get('password'))
 
         if not username or not password:
-            return JsonResponse({'error': 'Username and password are required'}, status=400)
+            return Response({'error': 'Username and password are required'}, status=400)
 
         if User.objects.filter(username=username).exists():
-            return HttpResponse("Usename Exists", status=401)
+            return Response("Usename Exists", status=401)
         user = User(username=username, password=password)
         user.save()
-        return HttpResponse('User created successfully')
+        return Response('User created successfully')
 
     except json.JSONDecodeError:
-        return HttpResponse("Invalid Data", status=400)
+        return Response("Invalid Data", status=400)
     
 
 @api_view(['POST'])
 def logout(request):
     try:
-        data = json.loads(request.body)
-        session_id = data.get('session_cookie')
+        session_id = request.COOKIES.get('session_cookie')
         if not session_id:
             return Response("Invalid Input", status=401)
         user = User.objects.filter(session_cookie=session_id)
@@ -72,7 +70,7 @@ def logout(request):
         utils.clear_session(user)
         return Response("Sucessful Logout")
     except json.JSONDecodeError:
-        return HttpResponse("Invalid Data", status=400)
+        return Response("Invalid Data", status=400)
     
 logout_request = Response("logout", status=303)
 
@@ -80,7 +78,7 @@ logout_request = Response("logout", status=303)
 def addEntry(request):
     try:
         data = json.loads(request.body)
-        session_id = data.get('session_cookie')
+        session_id = request.COOKIES.get('session_cookie')
         if not session_id:
             return Response("Invalid Input", status=401)
         user = User.objects.filter(session_cookie=session_id)
@@ -107,24 +105,78 @@ def addEntry(request):
         return Response("Entry Saved Sucessfully", status=200)
 
     except json.JSONDecodeError:
-        return HttpResponse("Invalid Data", status=400)
+        return Response("Invalid Data", status=400)
 
-@api_view(['POST'])
-def deleteEntry(request):
-    return HttpResponse("Welcome to the base address")
+@api_view(['DELETE'])
+def deleteEntry(request, id):
+    session_id = request.COOKIES.get('session_cookie')
+    if not session_id:
+        return Response("No Session ID", status=401)
+    user = User.objects.filter(session_cookie=session_id)
 
-@api_view(['POST'])
-def modifyEntry(request):
-    return HttpResponse("Welcome to the base address")
+    if not user:
+        return Response("Session Not Found", status=401)
+    user = user.first()
 
+    if not utils.is_session_valid(user):
+        utils.clear_session(user)
+        return logout_request
+    
+    if not (id):
+        return Response("Id Field Not Provided", status=400)
+    
+    entry = Entry.objects.filter(id=id, user=user)
+
+    if not entry:
+        return Response("No matching Entry Found", status=400)
+    
+    entry.delete()
+    return Response({id: "deleted"}, status=200)
+
+@api_view(['PUT', 'PATCH'])
+def modifyEntry(request, id):
+    session_id = request.COOKIES.get('session_cookie')
+    if not session_id:
+        return Response("No Session ID", status=401)
+    user = User.objects.filter(session_cookie=session_id)
+
+    if not user:
+        return Response("Session Not Found", status=401)
+    user = user.first()
+
+    if not utils.is_session_valid(user):
+        utils.clear_session(user)
+        return logout_request
+
+    if not (id):
+        return Response("Id Field Not Provided", status=400)
+    
+    entry = Entry.objects.filter(id=id, user=user).first()
+    if not entry:
+        return Response("No matching Entry Found", status=400)
+    
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return Response("Input Data Incorrect Format", status=400)
+    
+    entry.date = data.get('date', entry.date)
+    entry.food = data.get('food', entry.food)
+    entry.protein = data.get('protein', entry.protein)
+    entry.carbohydrates = data.get('carbohydrates', entry.carbohydrates)
+    entry.fats = data.get('fats', entry.fats)
+
+    entry.save()
+    return Response(model_to_dict(entry))
+
+
+# Change to query parameters
 @api_view(['GET'])
 def getEntries(request):
     try:
-        data = json.loads(request.body)
-
-        session_id = data.get('session_cookie')
+        session_id = request.COOKIES.get('session_cookie')
         if not session_id:
-            return Response("Invalid Input", status=401)
+            return Response("No Session ID", status=401)
         
         user = User.objects.filter(session_cookie=session_id)
         if not user:
@@ -142,4 +194,4 @@ def getEntries(request):
         return Response(serialized_entries)
         
     except json.JSONDecodeError:
-        return HttpResponse("Invalid Data", status=400)
+        return Response("Invalid Data", status=400)
